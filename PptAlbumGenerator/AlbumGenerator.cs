@@ -162,20 +162,19 @@ namespace PptAlbumGenerator
             {
                 StartAt = startAt;
                 Duration = duration;
-                EndAt = StartAt + Duration;
             }
 
             public TimeSpan StartAt { get; set; }
 
             public TimeSpan Duration { get; set; }
 
-            public TimeSpan EndAt { get; }
+            public TimeSpan EndAt => StartAt + Duration;
 
             public void ApplyTiming(Timing t)
             {
                 if (t == null) throw new ArgumentNullException(nameof(t));
-                t.TriggerDelayTime = StartAt.Seconds;
-                t.Duration = Duration.Seconds;
+                t.TriggerDelayTime = (float) StartAt.TotalSeconds;
+                t.Duration = (float)Duration.TotalSeconds;
             }
 
             public void ApplyTiming(IEnumerable<Timing> timings)
@@ -183,16 +182,24 @@ namespace PptAlbumGenerator
                 var lastEndAt = StartAt;
                 foreach (var t in timings)
                 {
-                    t.TriggerDelayTime = lastEndAt.Seconds;
-                    t.Duration = Duration.Seconds;
+                    t.TriggerDelayTime = (float)lastEndAt.TotalSeconds;
+                    t.Duration = (float)Duration.TotalSeconds;
                     lastEndAt += Duration;
                 }
-                Duration = EndAt - StartAt;
+                Duration = lastEndAt - StartAt;
             }
+        }
+
+        public enum ImageScrollDirection
+        {
+            RightDown,
+            LeftUp
         }
 
         private class PageClosure : Closure
         {
+            const float MinImageScrollTime = 4; //Minimum
+
             public Slide Slide { get; }
 
             public Shape PrimaryImage { get; set; }
@@ -201,17 +208,22 @@ namespace PptAlbumGenerator
 
             public Shape PrimaryTextBox { get; set; }
 
-            public TextClosure PreviousText { get; set; }
+            public float PagePersistTime { get; set; } = 1;
 
             private DocumentClosure Document => Ancestor<DocumentClosure>();
 
+            private const int SubtitleFontSize = 24;
+            private const int SecondarySubtitleFontSize = 20;
+
             private Effect primaryImageAnimation;
+            private AnimationBehavior primaryImageSlideBehavior;
+
+            private bool isPrimaryImageVertical;
 
             /// <summary>
             /// 由用户注册的所有动画。
             /// </summary>
             public List<AnimationInfo> Animations { get; } = new List<AnimationInfo>();
-
 
             public AnimationInfo AddAnimation(Shape shape, MsoAnimEffect effect,
                 TimeSpan delay, TimeSpan duration, AnimationOptions options)
@@ -261,7 +273,7 @@ namespace PptAlbumGenerator
                 textBox.TextFrame.WordWrap = MsoTriState.msoTrue;
                 textBox.TextFrame.TextRange.Text = ParseTextExpression(content);
                 textBox.TextFrame.TextRange.ParagraphFormat.Alignment = PpParagraphAlignment.ppAlignCenter;
-                textBox.TextFrame.TextRange.Font.Size = 24;
+                textBox.TextFrame.TextRange.Font.Size = SubtitleFontSize;
                 textBox.TextFrame.TextRange.Font.Bold = MsoTriState.msoTrue;
                 textBox.TextFrame.TextRange.Font.Shadow = MsoTriState.msoTrue;
                 textBox.TextFrame2.TextRange.Font.Line.Visible = MsoTriState.msoTrue;
@@ -272,8 +284,7 @@ namespace PptAlbumGenerator
 
             public void Initialize(string imagePath, string primaryText)
             {
-                const float PAGE_PERSIST_TIME = 4;      //Minimum
-                ImageScrollTime = PAGE_PERSIST_TIME;
+                ImageScrollTime = MinImageScrollTime;
                 var ppEntryEffect = RandomEntryEffect();
                 Slide.SlideShowTransition.EntryEffect = ppEntryEffect;
                 Slide.SlideShowTransition.Duration = 1;
@@ -285,41 +296,83 @@ namespace PptAlbumGenerator
                         effectId: MsoAnimEffect.msoAnimEffectCustom,
                         trigger: MsoAnimTriggerType.msoAnimTriggerWithPrevious);
                     //宽 / 高
-                    var sizeRatio = PrimaryImage.Width / PrimaryImage.Height;
+                    var sizeRatio = PrimaryImage.Width/PrimaryImage.Height;
+                    var screenRatio = Document.SlideWidth/Document.SlideHeight;
                     float scrollOffsetRelative;
-                    if (sizeRatio > 1)
-                    {
-                        // 横向
-                        PrimaryImage.Height = Document.SlideHeight;
-                        scrollOffsetRelative = -(PrimaryImage.Width - Document.SlideWidth) / Document.SlideWidth;
-                        //var effect = MakePathAnimation(picture, MsoAnimTriggerType.msoAnimTriggerWithPrevious);
-                        primaryImageAnimation.Behaviors.Add(MsoAnimType.msoAnimTypeMotion).MotionEffect.Path =
-                            $"M 0 0 L {scrollOffsetRelative} 0";
-                    }
-                    else
+                    // 图片比屏幕更高一些，纵向。
+                    isPrimaryImageVertical = sizeRatio < screenRatio;
+                    //foreach (AnimationBehavior b in primaryImageAnimation.Behaviors)
+                    //    b.Delete();
+                    //primaryImageSlideBehavior = primaryImageAnimation.Behaviors.Add(MsoAnimType.msoAnimTypeMotion);
+                    if (isPrimaryImageVertical)
                     {
                         // 纵向
                         PrimaryImage.Width = Document.SlideWidth;
                         PrimaryImage.Top = Document.SlideHeight - PrimaryImage.Height;
-                        scrollOffsetRelative = (PrimaryImage.Height - Document.SlideHeight) / Document.SlideHeight;
+                        scrollOffsetRelative = (PrimaryImage.Height - Document.SlideHeight)/Document.SlideHeight;
                         //var effect = MakePathAnimation(picture, MsoAnimTriggerType.msoAnimTriggerWithPrevious);
                         primaryImageAnimation.Behaviors.Add(MsoAnimType.msoAnimTypeMotion).MotionEffect.Path =
                             $"M 0 0 L 0 {scrollOffsetRelative}";
+                    }
+                    else
+                    {
+                        PrimaryImage.Height = Document.SlideHeight;
+                        scrollOffsetRelative = -(PrimaryImage.Width - Document.SlideWidth)/Document.SlideWidth;
+                        //var effect = MakePathAnimation(picture, MsoAnimTriggerType.msoAnimTriggerWithPrevious);
+                        primaryImageAnimation.Behaviors.Add(MsoAnimType.msoAnimTypeMotion).MotionEffect.Path =
+                            $"M 0 0 L {scrollOffsetRelative} 0";
                     }
                     if (Math.Abs(scrollOffsetRelative) > 2)
                     {
                         // 如果宽高比过于极端
                         ImageScrollTime =
-                            PAGE_PERSIST_TIME*(float) Math.Ceiling(Math.Abs(scrollOffsetRelative));
+                            MinImageScrollTime*(float) Math.Abs(scrollOffsetRelative);
                     }
                     primaryImageAnimation.Timing.Duration = ImageScrollTime;
                     primaryImageAnimation.Timing.SmoothEnd = MsoTriState.msoCTrue;
-                    if (!string.IsNullOrEmpty(primaryText))
-                    {
-                        PrimaryTextBox = CreateTextBox(primaryText, 0);
-                        PrimaryTextBox.TextFrame.TextRange.Font.Size = 24;
-                        PrimaryTextBox.Top = Document.SlideHeight - PrimaryTextBox.Height;
-                    }
+                }
+                if (!string.IsNullOrEmpty(primaryText))
+                {
+                    PrimaryTextBox = CreateTextBox(primaryText, 0);
+                    PrimaryTextBox.TextFrame.TextRange.Font.Size = 24;
+                    PrimaryTextBox.Top = Document.SlideHeight - PrimaryTextBox.Height;
+                }
+            }
+
+            public Closure Persist(float persistTime)
+            {
+                PagePersistTime = persistTime;
+                return this;
+            }
+
+            [ClosureOperation]
+            public void ImageDirection(ImageScrollDirection direction)
+            {
+                if (isPrimaryImageVertical)
+                {
+                    // 纵向
+                    PrimaryImage.Width = Document.SlideWidth;
+                    var scrollOffsetRelative = (PrimaryImage.Height - Document.SlideHeight)/Document.SlideHeight;
+                    if (direction == ImageScrollDirection.LeftUp)
+                        scrollOffsetRelative = -scrollOffsetRelative;
+                    PrimaryImage.Top = direction == ImageScrollDirection.LeftUp
+                        ? 0
+                        : Document.SlideHeight - PrimaryImage.Height;
+                    primaryImageSlideBehavior.MotionEffect.Path =
+                        $"M 0 0 L 0 {scrollOffsetRelative}";
+                }
+                else
+                {
+                    // 横向
+                    PrimaryImage.Height = Document.SlideHeight;
+                    var scrollOffsetRelative = (PrimaryImage.Width - Document.SlideWidth)/Document.SlideWidth;
+                    if (direction == ImageScrollDirection.LeftUp)
+                        scrollOffsetRelative = -scrollOffsetRelative;
+                    PrimaryImage.Left = direction == ImageScrollDirection.LeftUp
+                        ? 0
+                        : Document.SlideWidth - PrimaryImage.Width;
+                    primaryImageSlideBehavior.MotionEffect.Path =
+                        $"M 0 0 L {scrollOffsetRelative} 0";
                 }
             }
 
@@ -335,6 +388,29 @@ namespace PptAlbumGenerator
             }
 
             [ClosureOperation]
+            public Closure Subtitle2(string text = "")
+            {
+                var closure = new TextClosure(this) { TextBox = CreateTextBox(text, 0) };
+                closure.FontSize(SecondarySubtitleFontSize);
+                closure.Bottom();
+                return closure;
+            }
+
+            /// <summary>
+            /// 插入BGM，注意，此功能仅用作打样。建议后期手动合成音轨。
+            /// </summary>
+            [ClosureOperation]
+            public Closure Music(string path = "", int stopAfterSlides = 999)
+            {
+                var media = Slide.Shapes.AddMediaObject2(Path.Combine(Document.WorkPath, path));
+                var effect = Slide.TimeLine.MainSequence.AddEffect(media, MsoAnimEffect.msoAnimEffectMediaPlay,
+                    trigger: MsoAnimTriggerType.msoAnimTriggerWithPrevious);
+                effect.EffectInformation.PlaySettings.StopAfterSlides = stopAfterSlides;
+                return this;
+            }
+
+
+            [ClosureOperation]
             public Closure Transition(PpEntryEffect effect = PpEntryEffect.ppEffectNone)
             {
                 Slide.SlideShowTransition.EntryEffect = effect;
@@ -346,7 +422,8 @@ namespace PptAlbumGenerator
                 base.OnLeavingClosure();
                 Slide.SlideShowTransition.AdvanceOnTime = MsoTriState.msoTrue;
                 var animationTime = Animations.Count > 0 ? Animations.Last().EndAt : TimeSpan.Zero;
-                Slide.SlideShowTransition.AdvanceTime = Math.Max(ImageScrollTime, animationTime.Seconds);
+                Slide.SlideShowTransition.AdvanceTime = Math.Max(ImageScrollTime, (float) animationTime.TotalSeconds) +
+                                                        PagePersistTime;
             }
 
             public PageClosure(Closure parent, Slide slide) : base(parent)
@@ -400,7 +477,7 @@ namespace PptAlbumGenerator
             }
 
             [ClosureOperation]
-            public Closure VCetner(float offset = 0)
+            public Closure VCenter(float offset = 0)
             {
                 TextBox.Top = (Document.SlideHeight - TextBox.Height)/2 + offset*Document.SlideHeight;
                 return this;
@@ -408,9 +485,9 @@ namespace PptAlbumGenerator
 
             [ClosureOperation]
             public Closure Animation(MsoAnimEffect effect = MsoAnimEffect.msoAnimEffectFade,
-                AnimationOptions options = AnimationOptions.None, TimeSpan delay = default(TimeSpan))
+                AnimationOptions options = AnimationOptions.None, float delay = 0)
             {
-                Page.AddAnimation(TextBox, effect, delay, TimeSpan.FromSeconds(1), options);
+                Page.AddAnimation(TextBox, effect, TimeSpan.FromSeconds(delay), TimeSpan.FromSeconds(TextAnimationDuration), options);
                 return this;
             }
 
