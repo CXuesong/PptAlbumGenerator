@@ -156,6 +156,41 @@ namespace PptAlbumGenerator
             }
         }
 
+        private class AnimationInfo
+        {
+            public AnimationInfo(TimeSpan startAt, TimeSpan duration)
+            {
+                StartAt = startAt;
+                Duration = duration;
+                EndAt = StartAt + Duration;
+            }
+
+            public TimeSpan StartAt { get; set; }
+
+            public TimeSpan Duration { get; set; }
+
+            public TimeSpan EndAt { get; }
+
+            public void ApplyTiming(Timing t)
+            {
+                if (t == null) throw new ArgumentNullException(nameof(t));
+                t.TriggerDelayTime = StartAt.Seconds;
+                t.Duration = Duration.Seconds;
+            }
+
+            public void ApplyTiming(IEnumerable<Timing> timings)
+            {
+                var lastEndAt = StartAt;
+                foreach (var t in timings)
+                {
+                    t.TriggerDelayTime = lastEndAt.Seconds;
+                    t.Duration = Duration.Seconds;
+                    lastEndAt += Duration;
+                }
+                Duration = EndAt - StartAt;
+            }
+        }
+
         private class PageClosure : Closure
         {
             public Slide Slide { get; }
@@ -172,6 +207,49 @@ namespace PptAlbumGenerator
 
             private Effect primaryImageAnimation;
 
+            /// <summary>
+            /// 由用户注册的所有动画。
+            /// </summary>
+            public List<AnimationInfo> Animations { get; } = new List<AnimationInfo>();
+
+
+            public AnimationInfo AddAnimation(Shape shape, MsoAnimEffect effect,
+                TimeSpan delay, TimeSpan duration, AnimationOptions options)
+            {
+                var e = Slide.TimeLine.MainSequence.AddEffect(shape, effect,
+                    trigger: MsoAnimTriggerType.msoAnimTriggerWithPrevious);
+                e.Exit = (options & AnimationOptions.Exit) == AnimationOptions.Exit
+                    ? MsoTriState.msoTrue
+                    : MsoTriState.msoFalse;
+                var ani = (options & AnimationOptions.AfterPrevious) == AnimationOptions.AfterPrevious
+                    ? new AnimationInfo(Animations.LastOrDefault()?.EndAt ?? TimeSpan.Zero, duration)
+                    : new AnimationInfo(Animations.LastOrDefault()?.StartAt ?? TimeSpan.Zero, duration);
+                ani.ApplyTiming(e.Timing);
+                if ((options & AnimationOptions.ByCharacter) == AnimationOptions.ByCharacter)
+                {
+                    e = Slide.TimeLine.MainSequence.ConvertToTextUnitEffect(e,
+                        MsoAnimTextUnitEffect.msoAnimTextUnitEffectByCharacter);
+                }
+                if ((options & AnimationOptions.ByParagraph) == AnimationOptions.ByParagraph)
+                {
+                    const MsoAnimateByLevel BuildLevel = MsoAnimateByLevel.msoAnimateTextByAllLevels;
+                    e = Slide.TimeLine.MainSequence.ConvertToBuildLevel(e, BuildLevel);
+                    //此时 e 指向第一个段落的动画。
+                    var paragrahAnimations = new List<Effect>();
+                    for (int i = e.Index, j = Slide.TimeLine.MainSequence.Count; i <= j; i++)
+                    {
+                        var subEffect = Slide.TimeLine.MainSequence[i];
+                        if (subEffect.Shape != shape
+                            || subEffect.EffectInformation.BuildByLevelEffect != BuildLevel)
+                            break;
+                        paragrahAnimations.Add(subEffect);
+                    }
+                    //为每一个段落动画应用相同的触发模式。
+                    ani.ApplyTiming(paragrahAnimations.Select(e1 => e1.Timing));
+                }
+                Animations.Add(ani);
+                return ani;
+            }
 
             public Shape CreateTextBox(string content, float y)
             {
@@ -248,7 +326,6 @@ namespace PptAlbumGenerator
             [ClosureOperation]
             public Closure Text(string text = "")
             {
-                const float TEXT_PERSIST_TIME = 2f;
                 var closure = new TextClosure(this) {TextBox = CreateTextBox(text, 0)};
                 //closure.EnterAnimation = Slide.TimeLine.MainSequence.AddEffect(closure.TextBox,
                 //    effectId: MsoAnimEffect.msoAnimEffectFade,
@@ -268,7 +345,8 @@ namespace PptAlbumGenerator
             {
                 base.OnLeavingClosure();
                 Slide.SlideShowTransition.AdvanceOnTime = MsoTriState.msoTrue;
-                Slide.SlideShowTransition.AdvanceTime = ImageScrollTime;
+                var animationTime = Animations.Count > 0 ? Animations.Last().EndAt : TimeSpan.Zero;
+                Slide.SlideShowTransition.AdvanceTime = Math.Max(ImageScrollTime, animationTime.Seconds);
             }
 
             public PageClosure(Closure parent, Slide slide) : base(parent)
@@ -283,7 +361,8 @@ namespace PptAlbumGenerator
             None = 0,
             Exit = 1,
             ByParagraph = 2,
-            AfterPrevious = 4,
+            ByCharacter = 4,
+            AfterPrevious = 8,
         };
 
         private class TextClosure : Closure
@@ -329,40 +408,16 @@ namespace PptAlbumGenerator
 
             [ClosureOperation]
             public Closure Animation(MsoAnimEffect effect = MsoAnimEffect.msoAnimEffectFade,
-                AnimationOptions options = AnimationOptions.None, float delay = 0)
+                AnimationOptions options = AnimationOptions.None, TimeSpan delay = default(TimeSpan))
             {
-                var triggerType = (options & AnimationOptions.AfterPrevious) == AnimationOptions.AfterPrevious
-                    ? MsoAnimTriggerType.msoAnimTriggerAfterPrevious
-                    : MsoAnimTriggerType.msoAnimTriggerWithPrevious;
-                var e = Page.Slide.TimeLine.MainSequence.AddEffect(TextBox,
-                    effect,
-                    trigger: triggerType);
-                e.Exit = (options & AnimationOptions.Exit) == AnimationOptions.Exit
-                    ? MsoTriState.msoTrue
-                    : MsoTriState.msoFalse;
-                e.Timing.TriggerDelayTime = delay;
-                e.Timing.Duration = TextAnimationDuration;
-                if ((options & AnimationOptions.ByParagraph) == AnimationOptions.ByParagraph)
-                {
-                    const MsoAnimateByLevel BuildLevel = MsoAnimateByLevel.msoAnimateTextByAllLevels;
-                    e = Page.Slide.TimeLine.MainSequence.ConvertToBuildLevel(e, BuildLevel);
-                    //此时 e 指向第一个段落的动画。
-                    var paragrahAnimations = new List<Effect>();
-                    for (int i = e.Index, j = Page.Slide.TimeLine.MainSequence.Count; i <= j; i++)
-                    {
-                        var ani = Page.Slide.TimeLine.MainSequence[i];
-                        if (ani.Shape != TextBox || ani.EffectInformation.BuildByLevelEffect != BuildLevel)
-                            break;
-                        paragrahAnimations.Add(ani);
-                    }
-                    //为每一个段落动画应用相同的触发模式。
-                    foreach (var ani in paragrahAnimations)
-                    {
-                        ani.Timing.TriggerType = triggerType;
-                        ani.Timing.TriggerDelayTime = 0;
-                    }
-                    paragrahAnimations[0].Timing.TriggerDelayTime = 0;
-                }
+                Page.AddAnimation(TextBox, effect, delay, TimeSpan.FromSeconds(1), options);
+                return this;
+            }
+
+            [ClosureOperation]
+            public Closure FontSize(float size = 24)
+            {
+                TextBox.TextFrame.TextRange.Font.Size = size;
                 return this;
             }
 
@@ -485,13 +540,14 @@ namespace PptAlbumGenerator
                 var thisLine = ScriptReader.ReadLine();
                 if (thisLine == null) break;
                 Console.WriteLine(thisLine);
-                if (!string.IsNullOrWhiteSpace(thisLine) && thisLine[0] != '#')
+                if (!string.IsNullOrWhiteSpace(thisLine) && thisLine.TrimStart()[0] != '#')
                     ParseLine(thisLine);
             }
             while (CurrentClosure != null) ExitClosure();
             app.Run("PAG_PostProcess", thisPresentation);
-            thisPresentation.NewWindow();
-            //thisPresentation.VBProject.VBComponents.Remove(module); 
+            var wnd = thisPresentation.NewWindow();
+            thisPresentation.VBProject.VBComponents.Remove(module); 
+            wnd.Activate();
             //thisPresentation.Close();
         }
     }
