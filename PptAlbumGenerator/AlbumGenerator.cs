@@ -93,7 +93,9 @@ namespace PptAlbumGenerator
                         arguments.Add(Convert.ChangeType(operationExpressions[i], paramInfo[i].ParameterType));
                     }
                 }
-                return (Closure) method.Invoke(this, arguments.ToArray());
+                var c = (Closure) method.Invoke(this, arguments.ToArray());
+                Debug.Assert(c != null);
+                return c;
             }
 
             protected virtual void OnLeavingClosure()
@@ -120,6 +122,8 @@ namespace PptAlbumGenerator
 
             public string WorkPath { get; set; }
 
+            public bool IsDebug { get; set; }
+
             private void UpdateCache()
             {
                 _SlideWidth = Presentation.PageSetup.SlideWidth;
@@ -135,6 +139,13 @@ namespace PptAlbumGenerator
             public Closure Dir(string path)
             {
                 WorkPath = path;
+                return this;
+            }
+
+            [ClosureOperation]
+            public Closure Debug(bool value)
+            {
+                IsDebug = value;
                 return this;
             }
 
@@ -190,10 +201,13 @@ namespace PptAlbumGenerator
             }
         }
 
+        /// <summary>
+        /// 一张图片的滚动方向（视图滚动方向）。
+        /// </summary>
         public enum ImageScrollDirection
         {
-            RightDown,
-            LeftUp
+            LeftUp,
+            RightDown
         }
 
         private class PageClosure : Closure
@@ -298,38 +312,32 @@ namespace PptAlbumGenerator
                     //宽 / 高
                     var sizeRatio = PrimaryImage.Width/PrimaryImage.Height;
                     var screenRatio = Document.SlideWidth/Document.SlideHeight;
-                    float scrollOffsetRelative;
                     // 图片比屏幕更高一些，纵向。
                     isPrimaryImageVertical = sizeRatio < screenRatio;
-                    //foreach (AnimationBehavior b in primaryImageAnimation.Behaviors)
-                    //    b.Delete();
-                    //primaryImageSlideBehavior = primaryImageAnimation.Behaviors.Add(MsoAnimType.msoAnimTypeMotion);
                     if (isPrimaryImageVertical)
-                    {
-                        // 纵向
                         PrimaryImage.Width = Document.SlideWidth;
-                        PrimaryImage.Top = Document.SlideHeight - PrimaryImage.Height;
-                        scrollOffsetRelative = (PrimaryImage.Height - Document.SlideHeight)/Document.SlideHeight;
-                        //var effect = MakePathAnimation(picture, MsoAnimTriggerType.msoAnimTriggerWithPrevious);
-                        primaryImageAnimation.Behaviors.Add(MsoAnimType.msoAnimTypeMotion).MotionEffect.Path =
-                            $"M 0 0 L 0 {scrollOffsetRelative}";
-                    }
                     else
-                    {
                         PrimaryImage.Height = Document.SlideHeight;
-                        scrollOffsetRelative = -(PrimaryImage.Width - Document.SlideWidth)/Document.SlideWidth;
-                        //var effect = MakePathAnimation(picture, MsoAnimTriggerType.msoAnimTriggerWithPrevious);
-                        primaryImageAnimation.Behaviors.Add(MsoAnimType.msoAnimTypeMotion).MotionEffect.Path =
-                            $"M 0 0 L {scrollOffsetRelative} 0";
-                    }
+                    primaryImageSlideBehavior = primaryImageAnimation.Behaviors.Add(MsoAnimType.msoAnimTypeMotion);
+                    ImageDirection(isPrimaryImageVertical ? ImageScrollDirection.LeftUp : ImageScrollDirection.RightDown);
+                    var scrollOffsetRelative = isPrimaryImageVertical
+                        ? PrimaryImage.Height/Document.SlideHeight
+                        : PrimaryImage.Width/Document.SlideWidth;
                     if (Math.Abs(scrollOffsetRelative) > 2)
                     {
-                        // 如果宽高比过于极端
-                        ImageScrollTime =
-                            MinImageScrollTime*(float) Math.Abs(scrollOffsetRelative);
+                        // 如果超出屏幕的区域太长……
+                        ImageScrollTime = MinImageScrollTime*Math.Abs(scrollOffsetRelative);
                     }
                     primaryImageAnimation.Timing.Duration = ImageScrollTime;
                     primaryImageAnimation.Timing.SmoothEnd = MsoTriState.msoCTrue;
+                    if (Document.IsDebug)
+                    {
+                        var tb = Slide.Shapes.AddTextbox(MsoTextOrientation.msoTextOrientationHorizontal, 0, 0, 50, 50);
+                        tb.TextFrame.AutoSize = PpAutoSize.ppAutoSizeShapeToFitText;
+                        tb.TextFrame.WordWrap = MsoTriState.msoFalse;
+                        tb.TextFrame.TextRange.Font.Size = 9;
+                        tb.TextFrame.TextRange.Text = imagePath;
+                    }
                 }
                 if (!string.IsNullOrEmpty(primaryText))
                 {
@@ -346,16 +354,16 @@ namespace PptAlbumGenerator
             }
 
             [ClosureOperation]
-            public void ImageDirection(ImageScrollDirection direction)
+            public Closure ImageDirection(ImageScrollDirection direction)
             {
                 if (isPrimaryImageVertical)
                 {
                     // 纵向
                     PrimaryImage.Width = Document.SlideWidth;
                     var scrollOffsetRelative = (PrimaryImage.Height - Document.SlideHeight)/Document.SlideHeight;
-                    if (direction == ImageScrollDirection.LeftUp)
+                    if (direction == ImageScrollDirection.RightDown)
                         scrollOffsetRelative = -scrollOffsetRelative;
-                    PrimaryImage.Top = direction == ImageScrollDirection.LeftUp
+                    PrimaryImage.Top = direction == ImageScrollDirection.RightDown
                         ? 0
                         : Document.SlideHeight - PrimaryImage.Height;
                     primaryImageSlideBehavior.MotionEffect.Path =
@@ -366,14 +374,15 @@ namespace PptAlbumGenerator
                     // 横向
                     PrimaryImage.Height = Document.SlideHeight;
                     var scrollOffsetRelative = (PrimaryImage.Width - Document.SlideWidth)/Document.SlideWidth;
-                    if (direction == ImageScrollDirection.LeftUp)
+                    if (direction == ImageScrollDirection.RightDown)
                         scrollOffsetRelative = -scrollOffsetRelative;
-                    PrimaryImage.Left = direction == ImageScrollDirection.LeftUp
+                    PrimaryImage.Left = direction == ImageScrollDirection.RightDown
                         ? 0
                         : Document.SlideWidth - PrimaryImage.Width;
                     primaryImageSlideBehavior.MotionEffect.Path =
                         $"M 0 0 L {scrollOffsetRelative} 0";
                 }
+                return this;
             }
 
             [ClosureOperation]
