@@ -1,4 +1,4 @@
-using System;
+Ôªøusing System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -44,7 +44,7 @@ namespace PptAlbumGenerator
                 c = c.Parent;
             }
             if (errorIfNotFound)
-                throw new ArgumentException($"‘⁄µ±«∞◊˜”√”Ú’“≤ªµΩ{typeof (T)}¿‡–Õµƒ”Ú°£");
+                throw new ArgumentException($"Âú®ÂΩìÂâç‰ΩúÁî®ÂüüÊâæ‰∏çÂà∞{typeof (T)}Á±ªÂûãÁöÑÂüü„ÄÇ");
             return null;
         }
 
@@ -52,12 +52,12 @@ namespace PptAlbumGenerator
         {
             var method = GetType().GetMethod(operationName,
                 BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
-            if (method == null) throw new ArgumentException($"‘⁄{this}÷–’“≤ªµΩ≤Ÿ◊˜°∞{operationName}°±°£");
+            if (method == null) throw new ArgumentException($"Âú®{this}‰∏≠Êâæ‰∏çÂà∞Êìç‰Ωú‚Äú{operationName}‚Äù„ÄÇ");
             var arguments = new List<object>();
             var paramInfo = method.GetParameters();
             if (operationExpressions.Length > paramInfo.Length)
                 throw new ArgumentException(
-                    $"Ã·π©¡À{operationExpressions.Length}∏ˆ≤Œ ˝£¨µ´∫Ø ˝{method}Ωˆ–Ë “™{paramInfo.Length}∏ˆ≤Œ ˝°£");
+                    $"Êèê‰æõ‰∫Ü{operationExpressions.Length}‰∏™ÂèÇÊï∞Ôºå‰ΩÜÂáΩÊï∞{method}‰ªÖÈúÄ Ë¶Å{paramInfo.Length}‰∏™ÂèÇÊï∞„ÄÇ");
             for (int i = 0; i < paramInfo.Length; i++)
             {
                 if (i >= operationExpressions.Length ||
@@ -86,57 +86,313 @@ namespace PptAlbumGenerator
     }
 
 
-    internal class AnimationInfo
+    /// <summary>
+    /// Ê†π„ÄÇ
+    /// </summary>
+    internal class DocumentClosure : Closure
     {
-        public AnimationInfo(TimeSpan startAt, TimeSpan duration)
+        private float _SlideWidth;
+        private float _SlideHeight;
+
+        public Presentation Presentation { get; }
+
+        public Application Application { get; }
+
+        public float SlideWidth => _SlideWidth;
+
+        public float SlideHeight => _SlideHeight;
+
+        public string WorkPath { get; set; }
+
+        public bool IsDebug { get; set; }
+
+        public SlideTransitionPoolClosure SlideTransitionPool { get; }
+
+        private void UpdateCache()
         {
-            StartAt = startAt;
-            Duration = duration;
+            _SlideWidth = Presentation.PageSetup.SlideWidth;
+            _SlideHeight = Presentation.PageSetup.SlideHeight;
         }
 
-        public TimeSpan StartAt { get; set; }
-
-        public TimeSpan Duration { get; set; }
-
-        public TimeSpan EndAt => StartAt + Duration;
-
-        public void ApplyTiming(Timing t)
+        public void Initialize()
         {
-            if (t == null) throw new ArgumentNullException(nameof(t));
-            t.TriggerDelayTime = (float)StartAt.TotalSeconds;
-            t.Duration = (float)Duration.TotalSeconds;
+            UpdateCache();
         }
 
-        public void ApplyTiming(IEnumerable<Timing> timings)
+        [ClosureOperation]
+        public Closure Dir(string path)
         {
-            var lastEndAt = StartAt;
-            foreach (var t in timings)
-            {
-                t.TriggerDelayTime = (float)lastEndAt.TotalSeconds;
-                t.Duration = (float)Duration.TotalSeconds;
-                lastEndAt += Duration;
-            }
-            Duration = lastEndAt - StartAt;
+            WorkPath = Path.Combine(WorkPath, path);
+            return this;
+        }
+
+        [ClosureOperation]
+        public Closure Debug(bool value)
+        {
+            IsDebug = value;
+            return this;
+        }
+
+        [ClosureOperation]
+        public Closure Page(string imagePath = "", string primaryText = "")
+        {
+            var closure = new PageClosure(this, Presentation.Slides.Add(
+                Presentation.Slides.Count + 1, PpSlideLayout.ppLayoutBlank));
+            if (!string.IsNullOrEmpty(imagePath)) imagePath = Path.Combine(WorkPath, imagePath);
+            closure.Initialize(imagePath, primaryText);
+            return closure;
+        }
+
+        [ClosureOperation]
+        public Closure Transitions()
+        {
+            return SlideTransitionPool;
+        }
+
+        public DocumentClosure(Closure parent, Presentation presentation, Application application) : base(parent)
+        {
+            Presentation = presentation;
+            Application = application;
+            SlideTransitionPool = new SlideTransitionPoolClosure(this);
+            UpdateCache();
         }
     }
 
-    [Flags]
-    public enum AnimationOptions
+    internal class PageClosure : Closure
     {
-        None = 0,
-        Exit = 1,
-        ByParagraph = 2,
-        ByCharacter = 4,
-        AfterPrevious = 8,
-    };
+        const float MinImageScrollTime = 4; //Minimum
 
-    /// <summary>
-    /// “ª’≈Õº∆¨µƒπˆ∂Ø∑ΩœÚ£® ”Õºπˆ∂Ø∑ΩœÚ£©°£
-    /// </summary>
-    public enum ImageScrollDirection
-    {
-        LeftUp,
-        RightDown
+        public Slide Slide { get; }
+
+        public Shape PrimaryImage { get; set; }
+
+        public float ImageScrollTime { get; set; }
+
+        public Shape PrimaryTextBox { get; set; }
+
+        public float PagePersistTime { get; set; } = 1;
+
+        private DocumentClosure Document => Ancestor<DocumentClosure>();
+
+        private const int SubtitleFontSize = 24;
+        private const int SecondarySubtitleFontSize = 20;
+
+        private Effect primaryImageAnimation;
+        private AnimationBehavior primaryImageSlideBehavior;
+
+        private bool isPrimaryImageVertical;
+
+        /// <summary>
+        /// Áî±Áî®Êà∑Ê≥®ÂÜåÁöÑÊâÄÊúâÂä®Áîª„ÄÇ
+        /// </summary>
+        public List<AnimationInfo> Animations { get; } = new List<AnimationInfo>();
+
+        public AnimationInfo AddAnimation(Shape shape, MsoAnimEffect effect,
+            TimeSpan delay, TimeSpan duration, AnimationOptions options)
+        {
+            var e = Slide.TimeLine.MainSequence.AddEffect(shape, effect,
+                trigger: MsoAnimTriggerType.msoAnimTriggerWithPrevious);
+            e.Exit = (options & AnimationOptions.Exit) == AnimationOptions.Exit
+                ? MsoTriState.msoTrue
+                : MsoTriState.msoFalse;
+            var ani =
+                new AnimationInfo((((options & AnimationOptions.AfterPrevious) == AnimationOptions.AfterPrevious
+                    ? Animations.LastOrDefault()?.EndAt
+                    : Animations.LastOrDefault()?.StartAt) ?? TimeSpan.Zero) + delay,
+                    duration);
+            ani.ApplyTiming(e.Timing);
+            if ((options & AnimationOptions.ByCharacter) == AnimationOptions.ByCharacter)
+            {
+                e = Slide.TimeLine.MainSequence.ConvertToTextUnitEffect(e,
+                    MsoAnimTextUnitEffect.msoAnimTextUnitEffectByCharacter);
+            }
+            if ((options & AnimationOptions.ByParagraph) == AnimationOptions.ByParagraph)
+            {
+                const MsoAnimateByLevel BuildLevel = MsoAnimateByLevel.msoAnimateTextByAllLevels;
+                e = Slide.TimeLine.MainSequence.ConvertToBuildLevel(e, BuildLevel);
+                //Ê≠§Êó∂ e ÊåáÂêëÁ¨¨‰∏Ä‰∏™ÊÆµËêΩÁöÑÂä®Áîª„ÄÇ
+                var paragrahAnimations = new List<Effect>();
+                for (int i = e.Index, j = Slide.TimeLine.MainSequence.Count; i <= j; i++)
+                {
+                    var subEffect = Slide.TimeLine.MainSequence[i];
+                    if (subEffect.Shape != shape
+                        || subEffect.EffectInformation.BuildByLevelEffect != BuildLevel)
+                        break;
+                    paragrahAnimations.Add(subEffect);
+                }
+                //‰∏∫ÊØè‰∏Ä‰∏™ÊÆµËêΩÂä®ÁîªÂ∫îÁî®Áõ∏ÂêåÁöÑËß¶ÂèëÊ®°Âºè„ÄÇ
+                ani.ApplyTiming(paragrahAnimations.Select(e1 => e1.Timing));
+            }
+            Animations.Add(ani);
+            return ani;
+        }
+
+        public Shape CreateTextBox(string content, float y)
+        {
+
+            var textBox = Slide.Shapes.AddTextbox(
+                MsoTextOrientation.msoTextOrientationHorizontal,
+                0, y, Document.SlideWidth, 100);
+            textBox.TextFrame.AutoSize = PpAutoSize.ppAutoSizeShapeToFitText;
+            textBox.TextFrame.WordWrap = MsoTriState.msoTrue;
+            textBox.TextFrame.TextRange.Text = content;
+            textBox.TextFrame.TextRange.ParagraphFormat.Alignment = PpParagraphAlignment.ppAlignCenter;
+            textBox.TextFrame.TextRange.Font.Size = SubtitleFontSize;
+            textBox.TextFrame.TextRange.Font.Bold = MsoTriState.msoTrue;
+            textBox.TextFrame.TextRange.Font.Shadow = MsoTriState.msoTrue;
+            textBox.TextFrame2.TextRange.Font.Line.Visible = MsoTriState.msoTrue;
+            textBox.TextFrame2.TextRange.Font.Line.ForeColor.RGB = 0;
+            textBox.TextFrame2.TextRange.Font.Line.Weight = 1;
+            return textBox;
+        }
+
+        public void Initialize(string imagePath, string primaryText)
+        {
+            ImageScrollTime = MinImageScrollTime;
+            var ppEntryEffect = Document.SlideTransitionPool.RandomEntryEffect();
+            Slide.SlideShowTransition.EntryEffect = ppEntryEffect;
+            Slide.SlideShowTransition.Duration = 1;
+            if (!String.IsNullOrEmpty(imagePath))
+            {
+                PrimaryImage = Slide.Shapes.AddPicture(imagePath,
+                    MsoTriState.msoTrue, MsoTriState.msoTrue, 0, 0);
+                primaryImageAnimation = Slide.TimeLine.MainSequence.AddEffect(PrimaryImage,
+                    effectId: MsoAnimEffect.msoAnimEffectCustom,
+                    trigger: MsoAnimTriggerType.msoAnimTriggerWithPrevious);
+                //ÂÆΩ / È´ò
+                var sizeRatio = PrimaryImage.Width / PrimaryImage.Height;
+                var screenRatio = Document.SlideWidth / Document.SlideHeight;
+                // ÂõæÁâáÊØîÂ±èÂπïÊõ¥È´ò‰∏Ä‰∫õÔºåÁ∫µÂêë„ÄÇ
+                isPrimaryImageVertical = sizeRatio < screenRatio;
+                if (isPrimaryImageVertical)
+                    PrimaryImage.Width = Document.SlideWidth;
+                else
+                    PrimaryImage.Height = Document.SlideHeight;
+                primaryImageSlideBehavior = primaryImageAnimation.Behaviors.Add(MsoAnimType.msoAnimTypeMotion);
+                ImageDirection(isPrimaryImageVertical ? ImageScrollDirection.LeftUp : ImageScrollDirection.RightDown);
+                var scrollOffsetRelative = isPrimaryImageVertical
+                    ? PrimaryImage.Height / Document.SlideHeight
+                    : PrimaryImage.Width / Document.SlideWidth;
+                if (Math.Abs(scrollOffsetRelative) > 2)
+                {
+                    // Â¶ÇÊûúË∂ÖÂá∫Â±èÂπïÁöÑÂå∫ÂüüÂ§™Èïø‚Ä¶‚Ä¶
+                    ImageScrollTime = MinImageScrollTime * Math.Abs(scrollOffsetRelative);
+                }
+                primaryImageAnimation.Timing.Duration = ImageScrollTime;
+                primaryImageAnimation.Timing.SmoothEnd = MsoTriState.msoCTrue;
+                if (Document.IsDebug)
+                {
+                    var tb = Slide.Shapes.AddTextbox(MsoTextOrientation.msoTextOrientationHorizontal, 0, 0, 50, 50);
+                    tb.TextFrame.AutoSize = PpAutoSize.ppAutoSizeShapeToFitText;
+                    tb.TextFrame.WordWrap = MsoTriState.msoFalse;
+                    tb.TextFrame.TextRange.Font.Size = 9;
+                    tb.TextFrame.TextRange.Text = imagePath;
+                }
+            }
+            if (!String.IsNullOrEmpty(primaryText))
+            {
+                PrimaryTextBox = CreateTextBox(primaryText, 0);
+                PrimaryTextBox.TextFrame.TextRange.Font.Size = 24;
+                PrimaryTextBox.Top = Document.SlideHeight - PrimaryTextBox.Height;
+            }
+        }
+
+        public Closure Persist(float persistTime)
+        {
+            PagePersistTime = persistTime;
+            return this;
+        }
+
+        [ClosureOperation]
+        public Closure ImageDirection(ImageScrollDirection direction)
+        {
+            if (isPrimaryImageVertical)
+            {
+                // Á∫µÂêë
+                PrimaryImage.Width = Document.SlideWidth;
+                var scrollOffsetRelative = (PrimaryImage.Height - Document.SlideHeight) / Document.SlideHeight;
+                if (direction == ImageScrollDirection.RightDown)
+                    scrollOffsetRelative = -scrollOffsetRelative;
+                PrimaryImage.Top = direction == ImageScrollDirection.RightDown
+                    ? 0
+                    : Document.SlideHeight - PrimaryImage.Height;
+                primaryImageSlideBehavior.MotionEffect.Path =
+                    $"M 0 0 L 0 {scrollOffsetRelative}";
+            }
+            else
+            {
+                // Ê®™Âêë
+                PrimaryImage.Height = Document.SlideHeight;
+                var scrollOffsetRelative = (PrimaryImage.Width - Document.SlideWidth) / Document.SlideWidth;
+                if (direction == ImageScrollDirection.RightDown)
+                    scrollOffsetRelative = -scrollOffsetRelative;
+                PrimaryImage.Left = direction == ImageScrollDirection.RightDown
+                    ? 0
+                    : Document.SlideWidth - PrimaryImage.Width;
+                primaryImageSlideBehavior.MotionEffect.Path =
+                    $"M 0 0 L {scrollOffsetRelative} 0";
+            }
+            return this;
+        }
+
+        [ClosureOperation]
+        public Closure Text(string text = "")
+        {
+            var closure = new TextClosure(this) { TextBox = CreateTextBox(text, 0) };
+            //closure.EnterAnimation = Slide.TimeLine.MainSequence.AddEffect(closure.TextBox,
+            //    effectId: MsoAnimEffect.msoAnimEffectFade,
+            //    trigger: MsoAnimTriggerType.msoAnimTriggerAfterPrevious);
+            //closure.EnterAnimation.Timing.Duration = TEXT_ADVANCE_TIME;
+            return closure;
+        }
+
+        [ClosureOperation]
+        public Closure Subtitle2(string text = "")
+        {
+            var closure = new TextClosure(this) { TextBox = CreateTextBox(text, 0) };
+            closure.FontSize(SecondarySubtitleFontSize);
+            closure.Bottom();
+            return closure;
+        }
+
+        /// <summary>
+        /// ÊèíÂÖ•BGMÔºåÊ≥®ÊÑèÔºåÊ≠§ÂäüËÉΩ‰ªÖÁî®‰ΩúÊâìÊ†∑„ÄÇÂª∫ËÆÆÂêéÊúüÊâãÂä®ÂêàÊàêÈü≥ËΩ®„ÄÇ
+        /// </summary>
+        [ClosureOperation]
+        public Closure Music(string path = "", int stopAfterSlides = 999)
+        {
+            var media = Slide.Shapes.AddMediaObject2(Path.Combine(Document.WorkPath, path));
+            var effectIndex = Slide.TimeLine.MainSequence.AddEffect(media, MsoAnimEffect.msoAnimEffectMediaPlay,
+                trigger: MsoAnimTriggerType.msoAnimTriggerWithPrevious).Index;
+            media.Left = -media.Width;
+            media.Top = -media.Height;
+            Func<Effect> effect = () => Slide.TimeLine.MainSequence[effectIndex];
+            ////Ê≥®ÊÑè‰∏ãÈù¢‰∏§Ë°åÁöÑÈ°∫Â∫è‰∏çËÉΩÂèç„ÄÇ
+            //effect().EffectInformation.PlaySettings.HideWhileNotPlaying = MsoTriState.msoTrue;
+            effect().EffectInformation.PlaySettings.StopAfterSlides = stopAfterSlides;
+            return this;
+        }
+
+        [ClosureOperation]
+        public Closure Transition(PpEntryEffect effect = PpEntryEffect.ppEffectNone)
+        {
+            Slide.SlideShowTransition.EntryEffect = effect;
+            return this;
+        }
+
+        protected override void OnLeavingClosure()
+        {
+            base.OnLeavingClosure();
+            Slide.SlideShowTransition.AdvanceOnTime = MsoTriState.msoTrue;
+            var animationTime = Animations.Count > 0 ? Animations.Last().EndAt : TimeSpan.Zero;
+            Slide.SlideShowTransition.AdvanceTime = Math.Max(ImageScrollTime, (float)animationTime.TotalSeconds) +
+                                                    PagePersistTime;
+        }
+
+        public PageClosure(Closure parent, Slide slide) : base(parent)
+        {
+            Slide = slide;
+        }
     }
 
     internal class TextClosure : Closure
@@ -209,303 +465,56 @@ namespace PptAlbumGenerator
         }
     }
 
-    internal class PageClosure : Closure
+    internal class AnimationInfo
     {
-        const float MinImageScrollTime = 4; //Minimum
-
-        public Slide Slide { get; }
-
-        public Shape PrimaryImage { get; set; }
-
-        public float ImageScrollTime { get; set; }
-
-        public Shape PrimaryTextBox { get; set; }
-
-        public float PagePersistTime { get; set; } = 1;
-
-        private DocumentClosure Document => Ancestor<DocumentClosure>();
-
-        private const int SubtitleFontSize = 24;
-        private const int SecondarySubtitleFontSize = 20;
-
-        private Effect primaryImageAnimation;
-        private AnimationBehavior primaryImageSlideBehavior;
-
-        private bool isPrimaryImageVertical;
-
-        /// <summary>
-        /// ”…”√ªß◊¢≤·µƒÀ˘”–∂Øª≠°£
-        /// </summary>
-        public List<AnimationInfo> Animations { get; } = new List<AnimationInfo>();
-
-        public AnimationInfo AddAnimation(Shape shape, MsoAnimEffect effect,
-            TimeSpan delay, TimeSpan duration, AnimationOptions options)
+        public AnimationInfo(TimeSpan startAt, TimeSpan duration)
         {
-            var e = Slide.TimeLine.MainSequence.AddEffect(shape, effect,
-                trigger: MsoAnimTriggerType.msoAnimTriggerWithPrevious);
-            e.Exit = (options & AnimationOptions.Exit) == AnimationOptions.Exit
-                ? MsoTriState.msoTrue
-                : MsoTriState.msoFalse;
-            var ani =
-                new AnimationInfo((((options & AnimationOptions.AfterPrevious) == AnimationOptions.AfterPrevious
-                    ? Animations.LastOrDefault()?.EndAt
-                    : Animations.LastOrDefault()?.StartAt) ?? TimeSpan.Zero) + delay,
-                    duration);
-            ani.ApplyTiming(e.Timing);
-            if ((options & AnimationOptions.ByCharacter) == AnimationOptions.ByCharacter)
+            StartAt = startAt;
+            Duration = duration;
+        }
+
+        public TimeSpan StartAt { get; set; }
+
+        public TimeSpan Duration { get; set; }
+
+        public TimeSpan EndAt => StartAt + Duration;
+
+        public void ApplyTiming(Timing t)
+        {
+            if (t == null) throw new ArgumentNullException(nameof(t));
+            t.TriggerDelayTime = (float)StartAt.TotalSeconds;
+            t.Duration = (float)Duration.TotalSeconds;
+        }
+
+        public void ApplyTiming(IEnumerable<Timing> timings)
+        {
+            var lastEndAt = StartAt;
+            foreach (var t in timings)
             {
-                e = Slide.TimeLine.MainSequence.ConvertToTextUnitEffect(e,
-                    MsoAnimTextUnitEffect.msoAnimTextUnitEffectByCharacter);
+                t.TriggerDelayTime = (float)lastEndAt.TotalSeconds;
+                t.Duration = (float)Duration.TotalSeconds;
+                lastEndAt += Duration;
             }
-            if ((options & AnimationOptions.ByParagraph) == AnimationOptions.ByParagraph)
-            {
-                const MsoAnimateByLevel BuildLevel = MsoAnimateByLevel.msoAnimateTextByAllLevels;
-                e = Slide.TimeLine.MainSequence.ConvertToBuildLevel(e, BuildLevel);
-                //¥À ± e ÷∏œÚµ⁄“ª∏ˆ∂Œ¬‰µƒ∂Øª≠°£
-                var paragrahAnimations = new List<Effect>();
-                for (int i = e.Index, j = Slide.TimeLine.MainSequence.Count; i <= j; i++)
-                {
-                    var subEffect = Slide.TimeLine.MainSequence[i];
-                    if (subEffect.Shape != shape
-                        || subEffect.EffectInformation.BuildByLevelEffect != BuildLevel)
-                        break;
-                    paragrahAnimations.Add(subEffect);
-                }
-                //Œ™√ø“ª∏ˆ∂Œ¬‰∂Øª≠”¶”√œ‡Õ¨µƒ¥•∑¢ƒ£ Ω°£
-                ani.ApplyTiming(paragrahAnimations.Select(e1 => e1.Timing));
-            }
-            Animations.Add(ani);
-            return ani;
-        }
-
-        public Shape CreateTextBox(string content, float y)
-        {
-
-            var textBox = Slide.Shapes.AddTextbox(
-                MsoTextOrientation.msoTextOrientationHorizontal,
-                0, y, Document.SlideWidth, 100);
-            textBox.TextFrame.AutoSize = PpAutoSize.ppAutoSizeShapeToFitText;
-            textBox.TextFrame.WordWrap = MsoTriState.msoTrue;
-            textBox.TextFrame.TextRange.Text = content;
-            textBox.TextFrame.TextRange.ParagraphFormat.Alignment = PpParagraphAlignment.ppAlignCenter;
-            textBox.TextFrame.TextRange.Font.Size = SubtitleFontSize;
-            textBox.TextFrame.TextRange.Font.Bold = MsoTriState.msoTrue;
-            textBox.TextFrame.TextRange.Font.Shadow = MsoTriState.msoTrue;
-            textBox.TextFrame2.TextRange.Font.Line.Visible = MsoTriState.msoTrue;
-            textBox.TextFrame2.TextRange.Font.Line.ForeColor.RGB = 0;
-            textBox.TextFrame2.TextRange.Font.Line.Weight = 1;
-            return textBox;
-        }
-
-        public void Initialize(string imagePath, string primaryText)
-        {
-            ImageScrollTime = MinImageScrollTime;
-            var ppEntryEffect = AlbumGenerator.RandomEntryEffect();
-            Slide.SlideShowTransition.EntryEffect = ppEntryEffect;
-            Slide.SlideShowTransition.Duration = 1;
-            if (!String.IsNullOrEmpty(imagePath))
-            {
-                PrimaryImage = Slide.Shapes.AddPicture(imagePath,
-                    MsoTriState.msoTrue, MsoTriState.msoTrue, 0, 0);
-                primaryImageAnimation = Slide.TimeLine.MainSequence.AddEffect(PrimaryImage,
-                    effectId: MsoAnimEffect.msoAnimEffectCustom,
-                    trigger: MsoAnimTriggerType.msoAnimTriggerWithPrevious);
-                //øÌ / ∏ﬂ
-                var sizeRatio = PrimaryImage.Width / PrimaryImage.Height;
-                var screenRatio = Document.SlideWidth / Document.SlideHeight;
-                // Õº∆¨±»∆¡ƒª∏¸∏ﬂ“ª–©£¨◊›œÚ°£
-                isPrimaryImageVertical = sizeRatio < screenRatio;
-                if (isPrimaryImageVertical)
-                    PrimaryImage.Width = Document.SlideWidth;
-                else
-                    PrimaryImage.Height = Document.SlideHeight;
-                primaryImageSlideBehavior = primaryImageAnimation.Behaviors.Add(MsoAnimType.msoAnimTypeMotion);
-                ImageDirection(isPrimaryImageVertical ? ImageScrollDirection.LeftUp : ImageScrollDirection.RightDown);
-                var scrollOffsetRelative = isPrimaryImageVertical
-                    ? PrimaryImage.Height / Document.SlideHeight
-                    : PrimaryImage.Width / Document.SlideWidth;
-                if (Math.Abs(scrollOffsetRelative) > 2)
-                {
-                    // »Áπ˚≥¨≥ˆ∆¡ƒªµƒ«¯”ÚÃ´≥§°≠°≠
-                    ImageScrollTime = MinImageScrollTime * Math.Abs(scrollOffsetRelative);
-                }
-                primaryImageAnimation.Timing.Duration = ImageScrollTime;
-                primaryImageAnimation.Timing.SmoothEnd = MsoTriState.msoCTrue;
-                if (Document.IsDebug)
-                {
-                    var tb = Slide.Shapes.AddTextbox(MsoTextOrientation.msoTextOrientationHorizontal, 0, 0, 50, 50);
-                    tb.TextFrame.AutoSize = PpAutoSize.ppAutoSizeShapeToFitText;
-                    tb.TextFrame.WordWrap = MsoTriState.msoFalse;
-                    tb.TextFrame.TextRange.Font.Size = 9;
-                    tb.TextFrame.TextRange.Text = imagePath;
-                }
-            }
-            if (!String.IsNullOrEmpty(primaryText))
-            {
-                PrimaryTextBox = CreateTextBox(primaryText, 0);
-                PrimaryTextBox.TextFrame.TextRange.Font.Size = 24;
-                PrimaryTextBox.Top = Document.SlideHeight - PrimaryTextBox.Height;
-            }
-        }
-
-        public Closure Persist(float persistTime)
-        {
-            PagePersistTime = persistTime;
-            return this;
-        }
-
-        [ClosureOperation]
-        public Closure ImageDirection(ImageScrollDirection direction)
-        {
-            if (isPrimaryImageVertical)
-            {
-                // ◊›œÚ
-                PrimaryImage.Width = Document.SlideWidth;
-                var scrollOffsetRelative = (PrimaryImage.Height - Document.SlideHeight) / Document.SlideHeight;
-                if (direction == ImageScrollDirection.RightDown)
-                    scrollOffsetRelative = -scrollOffsetRelative;
-                PrimaryImage.Top = direction == ImageScrollDirection.RightDown
-                    ? 0
-                    : Document.SlideHeight - PrimaryImage.Height;
-                primaryImageSlideBehavior.MotionEffect.Path =
-                    $"M 0 0 L 0 {scrollOffsetRelative}";
-            }
-            else
-            {
-                // ∫·œÚ
-                PrimaryImage.Height = Document.SlideHeight;
-                var scrollOffsetRelative = (PrimaryImage.Width - Document.SlideWidth) / Document.SlideWidth;
-                if (direction == ImageScrollDirection.RightDown)
-                    scrollOffsetRelative = -scrollOffsetRelative;
-                PrimaryImage.Left = direction == ImageScrollDirection.RightDown
-                    ? 0
-                    : Document.SlideWidth - PrimaryImage.Width;
-                primaryImageSlideBehavior.MotionEffect.Path =
-                    $"M 0 0 L {scrollOffsetRelative} 0";
-            }
-            return this;
-        }
-
-        [ClosureOperation]
-        public Closure Text(string text = "")
-        {
-            var closure = new TextClosure(this) { TextBox = CreateTextBox(text, 0) };
-            //closure.EnterAnimation = Slide.TimeLine.MainSequence.AddEffect(closure.TextBox,
-            //    effectId: MsoAnimEffect.msoAnimEffectFade,
-            //    trigger: MsoAnimTriggerType.msoAnimTriggerAfterPrevious);
-            //closure.EnterAnimation.Timing.Duration = TEXT_ADVANCE_TIME;
-            return closure;
-        }
-
-        [ClosureOperation]
-        public Closure Subtitle2(string text = "")
-        {
-            var closure = new TextClosure(this) { TextBox = CreateTextBox(text, 0) };
-            closure.FontSize(SecondarySubtitleFontSize);
-            closure.Bottom();
-            return closure;
-        }
-
-        /// <summary>
-        /// ≤Â»ÎBGM£¨◊¢“‚£¨¥Àπ¶ƒ‹Ωˆ”√◊˜¥Ú—˘°£Ω®“È∫Û∆⁄ ÷∂Ø∫œ≥…“ÙπÏ°£
-        /// </summary>
-        [ClosureOperation]
-        public Closure Music(string path = "", int stopAfterSlides = 999)
-        {
-            var media = Slide.Shapes.AddMediaObject2(Path.Combine(Document.WorkPath, path));
-            var effectIndex = Slide.TimeLine.MainSequence.AddEffect(media, MsoAnimEffect.msoAnimEffectMediaPlay,
-                trigger: MsoAnimTriggerType.msoAnimTriggerWithPrevious).Index;
-            media.Left = -media.Width;
-            media.Top = -media.Height;
-            Func<Effect> effect = () => Slide.TimeLine.MainSequence[effectIndex];
-            ////◊¢“‚œ¬√Ê¡Ω––µƒÀ≥–Ú≤ªƒ‹∑¥°£
-            //effect().EffectInformation.PlaySettings.HideWhileNotPlaying = MsoTriState.msoTrue;
-            effect().EffectInformation.PlaySettings.StopAfterSlides = stopAfterSlides;
-            return this;
-        }
-
-        [ClosureOperation]
-        public Closure Transition(PpEntryEffect effect = PpEntryEffect.ppEffectNone)
-        {
-            Slide.SlideShowTransition.EntryEffect = effect;
-            return this;
-        }
-
-        protected override void OnLeavingClosure()
-        {
-            base.OnLeavingClosure();
-            Slide.SlideShowTransition.AdvanceOnTime = MsoTriState.msoTrue;
-            var animationTime = Animations.Count > 0 ? Animations.Last().EndAt : TimeSpan.Zero;
-            Slide.SlideShowTransition.AdvanceTime = Math.Max(ImageScrollTime, (float)animationTime.TotalSeconds) +
-                                                    PagePersistTime;
-        }
-
-        public PageClosure(Closure parent, Slide slide) : base(parent)
-        {
-            Slide = slide;
+            Duration = lastEndAt - StartAt;
         }
     }
 
-    /// <summary>
-    /// ∏˘°£
-    /// </summary>
-    internal class DocumentClosure : Closure
+    [Flags]
+    public enum AnimationOptions
     {
-        private float _SlideWidth;
-        private float _SlideHeight;
+        None = 0,
+        Exit = 1,
+        ByParagraph = 2,
+        ByCharacter = 4,
+        AfterPrevious = 8,
+    };
 
-        public Presentation Presentation { get; }
-
-        public Application Application { get; }
-
-        public float SlideWidth => _SlideWidth;
-
-        public float SlideHeight => _SlideHeight;
-
-        public string WorkPath { get; set; }
-
-        public bool IsDebug { get; set; }
-
-        private void UpdateCache()
-        {
-            _SlideWidth = Presentation.PageSetup.SlideWidth;
-            _SlideHeight = Presentation.PageSetup.SlideHeight;
-        }
-
-        public void Initialize()
-        {
-            UpdateCache();
-        }
-
-        [ClosureOperation]
-        public Closure Dir(string path)
-        {
-            WorkPath = path;
-            return this;
-        }
-
-        [ClosureOperation]
-        public Closure Debug(bool value)
-        {
-            IsDebug = value;
-            return this;
-        }
-
-        [ClosureOperation]
-        public Closure Page(string imagePath = "", string primaryText = "")
-        {
-            var closure = new PageClosure(this, Presentation.Slides.Add(
-                Presentation.Slides.Count + 1, PpSlideLayout.ppLayoutBlank));
-            if (!String.IsNullOrEmpty(imagePath)) imagePath = Path.Combine(WorkPath, imagePath);
-            closure.Initialize(imagePath, primaryText);
-            return closure;
-        }
-
-        public DocumentClosure(Closure parent, Presentation presentation, Application application) : base(parent)
-        {
-            Presentation = presentation;
-            Application = application;
-            UpdateCache();
-        }
+    /// <summary>
+    /// ‰∏ÄÂº†ÂõæÁâáÁöÑÊªöÂä®ÊñπÂêëÔºàËßÜÂõæÊªöÂä®ÊñπÂêëÔºâ„ÄÇ
+    /// </summary>
+    public enum ImageScrollDirection
+    {
+        LeftUp,
+        RightDown
     }
 }

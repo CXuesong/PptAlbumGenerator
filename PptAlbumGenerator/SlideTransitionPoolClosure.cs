@@ -1,15 +1,18 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Microsoft.Office.Interop.PowerPoint;
 
 namespace PptAlbumGenerator
 {
-    partial class AlbumGenerator
+    /// <summary>
+    /// 用于管理可用的幻灯片切换效果。
+    /// </summary>
+    internal class SlideTransitionPoolClosure : Closure
     {
-        private static PpEntryEffect[] slideEntryEffects =
+        /// <summary>
+        /// 获取所有可用的幻灯片切换效果。（不包括 ppEffectRandom 。）
+        /// </summary>
+        private static PpEntryEffect[] AvailableSlideEntryEffects =
         {
             PpEntryEffect.ppEffectCut,
             PpEntryEffect.ppEffectCutThroughBlack,
@@ -180,12 +183,52 @@ namespace PptAlbumGenerator
             PpEntryEffect.ppEffectPanDown,
         };
 
-        private static Random rnd = new Random();
+        private IList<PpEntryEffect> _Transitions = AvailableSlideEntryEffects;
 
-        public static PpEntryEffect RandomEntryEffect()
+        public SlideTransitionPoolClosure(Closure parent) : base(parent)
         {
-            return slideEntryEffects[rnd.Next(0, slideEntryEffects.Length)];
         }
 
+        public IList<PpEntryEffect> Transitions => _Transitions;
+
+        private void EnsureLocalCopy()
+        {
+            if (_Transitions == AvailableSlideEntryEffects)
+                _Transitions = new List<PpEntryEffect>(AvailableSlideEntryEffects);
+        }
+
+        [ClosureOperation]
+        public Closure Add(PpEntryEffect effect)
+        {
+            EnsureLocalCopy();
+            _Transitions.Add(effect);
+            return this;
+        }
+
+        [ClosureOperation]
+        public Closure Remove(PpEntryEffect effect)
+        {
+            EnsureLocalCopy();
+            _Transitions.Remove(effect);
+            return this;
+        }
+
+        [ClosureOperation]
+        public Closure Clear(PpEntryEffect effect)
+        {
+            if (_Transitions == AvailableSlideEntryEffects)
+                _Transitions = new List<PpEntryEffect>();
+            else
+                _Transitions.Clear();
+            return this;
+        }
+
+        private Random rnd = new Random();
+
+        public PpEntryEffect RandomEntryEffect()
+        {
+            if (_Transitions.Count == 0) return PpEntryEffect.ppEffectNone;
+            return _Transitions[rnd.Next(0, _Transitions.Count)];
+        }
     }
 }

@@ -66,7 +66,9 @@ namespace PptAlbumGenerator
                 Indension = indension;
                 Command = command;
                 ParametersExpression = parametersExpression;
-                Parameters = parametersExpression.Split('\t').Select(ParseTextExpression).ToArray();
+                Parameters = parametersExpression == null
+                    ? new string[0]
+                    : parametersExpression.Split('\t').Select(ParseTextExpression).ToArray();
             }
         }
 
@@ -85,7 +87,8 @@ namespace PptAlbumGenerator
         {
             var match = lineMatcher.Match(line);
             if (!match.Success) throw new FormatException($"无法识别的行：{line}");
-            var instruction = new Instruction(match.Groups["Indension"].Value.Length, match.Groups["Command"].Value, match.Groups["Params"].Value);
+            var instruction = new Instruction(match.Groups["Indension"].Value.Length, match.Groups["Command"].Value,
+                match.Groups["Params"].Success ? match.Groups["Params"].Value : null);
             while (instruction.Indension <= indensionStack.Peek())
             {
                 indensionStack.Pop();
@@ -114,9 +117,11 @@ namespace PptAlbumGenerator
             indensionStack.Push(-1);
             if (app == null) app = new Application();
             thisPresentation = app.Presentations.Add(MsoTriState.msoFalse);
-            CurrentClosure = new DocumentClosure(null, thisPresentation, app);
+            var cl = new DocumentClosure(null, thisPresentation, app);
+            CurrentClosure = cl;
             ChangeTheme();
-            ((DocumentClosure) CurrentClosure).Initialize();
+            cl.Initialize();
+            cl.WorkPath = DefaultWorkPath;
             var module = thisPresentation.VBProject.VBComponents.Add(vbext_ComponentType.vbext_ct_StdModule);
             module.CodeModule.AddFromString(Resources.VBAModule);
             while (true)
