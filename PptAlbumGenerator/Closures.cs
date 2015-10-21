@@ -413,12 +413,16 @@ namespace PptAlbumGenerator
         public Closure Music(string path = "", int stopAfterSlides = 999)
         {
             var media = Slide.Shapes.AddMediaObject2(Path.Combine(Document.WorkPath, path));
-            var effect = Slide.TimeLine.MainSequence.AddEffect(media, MsoAnimEffect.msoAnimEffectMediaPlay,
-                trigger: MsoAnimTriggerType.msoAnimTriggerWithPrevious);
-            effect.EffectInformation.PlaySettings.StopAfterSlides = stopAfterSlides;
+            var effectIndex = Slide.TimeLine.MainSequence.AddEffect(media, MsoAnimEffect.msoAnimEffectMediaPlay,
+                trigger: MsoAnimTriggerType.msoAnimTriggerWithPrevious).Index;
+            media.Left = -media.Width;
+            media.Top = -media.Height;
+            Func<Effect> effect = () => Slide.TimeLine.MainSequence[effectIndex];
+            ////注意下面两行的顺序不能反。
+            //effect().EffectInformation.PlaySettings.HideWhileNotPlaying = MsoTriState.msoTrue;
+            effect().EffectInformation.PlaySettings.StopAfterSlides = stopAfterSlides;
             return this;
         }
-
 
         [ClosureOperation]
         public Closure Transition(PpEntryEffect effect = PpEntryEffect.ppEffectNone)
