@@ -61,7 +61,7 @@ namespace PptAlbumGenerator
             for (int i = 0; i < paramInfo.Length; i++)
             {
                 if (i >= operationExpressions.Length ||
-                    String.IsNullOrEmpty(operationExpressions[i]) && paramInfo[i].IsOptional)
+                    string.IsNullOrEmpty(operationExpressions[i]) && paramInfo[i].IsOptional)
                 {
                     arguments.Add(Type.Missing);
                 }
@@ -158,6 +158,14 @@ namespace PptAlbumGenerator
         }
     }
 
+    internal enum PrimaryImageAnimation
+    {
+        None = 0,
+        ScrollLeftUp,
+        ScrollRightDown,
+        Expand
+    }
+
     internal class PageClosure : Closure
     {
         const float MinImageScrollTime = 4; //Minimum
@@ -166,7 +174,7 @@ namespace PptAlbumGenerator
 
         public Shape PrimaryImage { get; set; }
 
-        public float ImageScrollTime { get; set; }
+        public float PrimaryImageAnimationDuration { get; set; }
 
         public Shape PrimaryTextBox { get; set; }
 
@@ -248,38 +256,59 @@ namespace PptAlbumGenerator
 
         public void Initialize(string imagePath, string primaryText)
         {
-            ImageScrollTime = MinImageScrollTime;
+            PrimaryImageAnimationDuration = MinImageScrollTime;
             var ppEntryEffect = Document.SlideTransitionPool.RandomEntryEffect();
             Slide.SlideShowTransition.EntryEffect = ppEntryEffect;
             Slide.SlideShowTransition.Duration = 1;
-            if (!String.IsNullOrEmpty(imagePath))
+            if (!string.IsNullOrEmpty(imagePath))
             {
                 PrimaryImage = Slide.Shapes.AddPicture(imagePath,
                     MsoTriState.msoTrue, MsoTriState.msoTrue, 0, 0);
-                primaryImageAnimation = Slide.TimeLine.MainSequence.AddEffect(PrimaryImage,
-                    effectId: MsoAnimEffect.msoAnimEffectCustom,
-                    trigger: MsoAnimTriggerType.msoAnimTriggerWithPrevious);
                 //宽 / 高
-                var sizeRatio = PrimaryImage.Width / PrimaryImage.Height;
-                var screenRatio = Document.SlideWidth / Document.SlideHeight;
+                var sizeRatio = PrimaryImage.Width/PrimaryImage.Height;
+                var screenRatio = Document.SlideWidth/Document.SlideHeight;
                 // 图片比屏幕更高一些，纵向。
                 isPrimaryImageVertical = sizeRatio < screenRatio;
+                // 先尝试放大图片，使其一边超出屏幕。
                 if (isPrimaryImageVertical)
                     PrimaryImage.Width = Document.SlideWidth;
                 else
                     PrimaryImage.Height = Document.SlideHeight;
-                primaryImageSlideBehavior = primaryImageAnimation.Behaviors.Add(MsoAnimType.msoAnimTypeMotion);
-                ImageDirection(isPrimaryImageVertical ? ImageScrollDirection.LeftUp : ImageScrollDirection.RightDown);
+                // 计算超出的部分。
                 var scrollOffsetRelative = isPrimaryImageVertical
-                    ? PrimaryImage.Height / Document.SlideHeight
-                    : PrimaryImage.Width / Document.SlideWidth;
-                if (Math.Abs(scrollOffsetRelative) > 2)
+                    ? PrimaryImage.Height/Document.SlideHeight
+                    : PrimaryImage.Width/Document.SlideWidth; // > 1.0
+                if (scrollOffsetRelative < 1.2)
                 {
-                    // 如果超出屏幕的区域太长……
-                    ImageScrollTime = MinImageScrollTime * Math.Abs(scrollOffsetRelative);
+                    // 缩小。
+                    if (isPrimaryImageVertical)
+                    {
+                        PrimaryImage.Height = Document.SlideHeight;
+                        PrimaryImage.Left = (Document.SlideWidth - PrimaryImage.Width)/2;
+                    }
+                    else
+                    {
+                        PrimaryImage.Width = Document.SlideWidth;
+                        PrimaryImage.Top = (Document.SlideHeight - PrimaryImage.Height)/2;
+                    }
                 }
-                primaryImageAnimation.Timing.Duration = ImageScrollTime;
-                primaryImageAnimation.Timing.SmoothEnd = MsoTriState.msoCTrue;
+                else
+                {
+                    // 滚动过长的图片。
+                    primaryImageAnimation = Slide.TimeLine.MainSequence.AddEffect(PrimaryImage,
+                        effectId: MsoAnimEffect.msoAnimEffectCustom,
+                        trigger: MsoAnimTriggerType.msoAnimTriggerWithPrevious);
+                    primaryImageSlideBehavior = primaryImageAnimation.Behaviors.Add(MsoAnimType.msoAnimTypeMotion);
+                    ImageScroll(isPrimaryImageVertical ? ImageScrollDirection.LeftUp : ImageScrollDirection.RightDown);
+                    if (Math.Abs(scrollOffsetRelative) > 2)
+                    {
+                        // 如果超出屏幕的区域太长……
+                        PrimaryImageAnimationDuration = MinImageScrollTime*Math.Abs(scrollOffsetRelative);
+                    }
+                    primaryImageAnimation.Timing.Duration = PrimaryImageAnimationDuration;
+                    primaryImageAnimation.Timing.SmoothEnd = MsoTriState.msoCTrue;
+
+                }
                 if (Document.IsDebug)
                 {
                     var tb = Slide.Shapes.AddTextbox(MsoTextOrientation.msoTextOrientationHorizontal, 0, 0, 50, 50);
@@ -289,7 +318,7 @@ namespace PptAlbumGenerator
                     tb.TextFrame.TextRange.Text = imagePath;
                 }
             }
-            if (!String.IsNullOrEmpty(primaryText))
+            if (!string.IsNullOrEmpty(primaryText))
             {
                 PrimaryTextBox = CreateTextBox(primaryText, 0);
                 PrimaryTextBox.TextFrame.TextRange.Font.Size = 24;
@@ -304,8 +333,9 @@ namespace PptAlbumGenerator
         }
 
         [ClosureOperation]
-        public Closure ImageDirection(ImageScrollDirection direction)
+        public Closure ImageScroll(ImageScrollDirection direction)
         {
+            if (primaryImageSlideBehavior == null) return this;
             if (isPrimaryImageVertical)
             {
                 // 纵向
@@ -331,6 +361,31 @@ namespace PptAlbumGenerator
                     : Document.SlideWidth - PrimaryImage.Width;
                 primaryImageSlideBehavior.MotionEffect.Path =
                     $"M 0 0 L {scrollOffsetRelative} 0";
+            }
+            return this;
+        }
+
+        [ClosureOperation]
+        public Closure ImageAnimation(MsoAnimEffect effect)
+        {
+            if (PrimaryImage == null) return this;
+            if (primaryImageAnimation == null)
+            {
+                primaryImageAnimation = Slide.TimeLine.MainSequence.AddEffect(PrimaryImage,
+                    effectId: effect,
+                    trigger: MsoAnimTriggerType.msoAnimTriggerWithPrevious, Index: 1);
+            }
+            else
+            {
+                primaryImageAnimation.EffectType = effect;
+            }
+            primaryImageAnimation.Timing.Duration = PrimaryImageAnimationDuration;
+            primaryImageAnimation.Timing.SmoothEnd = MsoTriState.msoTrue;
+            // 为部分动画特别指定参数。
+            if (effect == MsoAnimEffect.msoAnimEffectGrowShrink)
+            {
+                var b = primaryImageAnimation.Behaviors[1];
+                b.ScaleEffect.ByX = b.ScaleEffect.ByY = 120;    //注意单位是%
             }
             return this;
         }
@@ -385,7 +440,7 @@ namespace PptAlbumGenerator
             base.OnLeavingClosure();
             Slide.SlideShowTransition.AdvanceOnTime = MsoTriState.msoTrue;
             var animationTime = Animations.Count > 0 ? Animations.Last().EndAt : TimeSpan.Zero;
-            Slide.SlideShowTransition.AdvanceTime = Math.Max(ImageScrollTime, (float)animationTime.TotalSeconds) +
+            Slide.SlideShowTransition.AdvanceTime = Math.Max(PrimaryImageAnimationDuration, (float)animationTime.TotalSeconds) +
                                                     PagePersistTime;
         }
 
