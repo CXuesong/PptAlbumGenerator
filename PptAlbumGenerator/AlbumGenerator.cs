@@ -15,30 +15,23 @@ namespace PptAlbumGenerator
 {
     public partial class AlbumGenerator
     {
+        private Application app;
+        private Presentation thisPresentation;
+        private Closure CurrentClosure;
+
+        public TextReader ScriptReader { get; }
+
+        public string DefaultWorkPath { get; set; }
+
         public AlbumGenerator(TextReader scriptReader)
         {
             if (scriptReader == null) throw new ArgumentNullException(nameof(scriptReader));
             ScriptReader = scriptReader;
         }
 
-        public TextReader ScriptReader { get; }
-
-        private Application app;
-        private Presentation thisPresentation;
-
         private void ThrowInvalidIndension()
         {
             throw new FormatException($"无效的缩进。");
-        }
-
-        private Closure CurrentClosure;
-
-        private void EnterClosure(Closure newClosure)
-        {
-            if (newClosure != CurrentClosure)
-            {
-                CurrentClosure = newClosure;
-            }
         }
 
         private void ExitClosure()

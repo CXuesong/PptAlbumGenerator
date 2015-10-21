@@ -1,5 +1,19 @@
-﻿Option Explicit
+﻿''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' This file should be placed into generated PowerPoint presentation's VBA project
+' during the presentation generation process, and should be removed when the
+' generation is complete.
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Option Explicit
 
+''' <summary>
+''' This function provides a workaround for the essential
+''' path animation that the album relies heavily on.
+''' 
+''' The problem is that if you attempt to set msoAnimEffectPathRight
+''' as EffectType during the presentation generation process,
+''' either directly by C# Interop or by C# invoking VBA at that point,
+''' there will be actually no animation generated in the final presentation.
+''' </summary>
 Public Sub PAG_PostProcess(p As Presentation)
 Dim eachSlide As Slide
 Dim eachShape As Shape

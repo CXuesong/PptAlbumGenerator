@@ -9,13 +9,29 @@ namespace PptAlbumGenerator
 {
     class Program
     {
-        static void Main(string[] args)
+        static int Main(string[] args)
         {
+            Console.WriteLine(Prompts.HeaderText);
+            Console.WriteLine();
+            if (args.Length < 1)
+            {
+                ShowHelp();
+                return 1;
+            }
             using (var reader = new StreamReader(args[0]))
             {
-                var generator = new AlbumGenerator(reader);
+                var generator = new AlbumGenerator(reader)
+                {
+                    DefaultWorkPath = Path.GetDirectoryName(args[0])
+                };
                 generator.Generate();
             }
+            return 0;
+        }
+
+        static void ShowHelp()
+        {
+            Console.WriteLine(Prompts.HelpText);
         }
     }
 }

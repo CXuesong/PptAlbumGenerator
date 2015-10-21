@@ -8,7 +8,7 @@
 // </auto-generated>
 //------------------------------------------------------------------------------
 
-namespace PptAlbumGenerator.Properties {
+namespace PptAlbumGenerator {
     using System;
     
     
@@ -22,14 +22,14 @@ namespace PptAlbumGenerator.Properties {
     [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "4.0.0.0")]
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
-    internal class Resources {
+    internal class Prompts {
         
         private static global::System.Resources.ResourceManager resourceMan;
         
         private static global::System.Globalization.CultureInfo resourceCulture;
         
         [global::System.Diagnostics.CodeAnalysis.SuppressMessageAttribute("Microsoft.Performance", "CA1811:AvoidUncalledPrivateCode")]
-        internal Resources() {
+        internal Prompts() {
         }
         
         /// <summary>
@@ -39,7 +39,7 @@ namespace PptAlbumGenerator.Properties {
         internal static global::System.Resources.ResourceManager ResourceManager {
             get {
                 if (object.ReferenceEquals(resourceMan, null)) {
-                    global::System.Resources.ResourceManager temp = new global::System.Resources.ResourceManager("PptAlbumGenerator.Properties.Resources", typeof(Resources).Assembly);
+                    global::System.Resources.ResourceManager temp = new global::System.Resources.ResourceManager("PptAlbumGenerator.Prompts", typeof(Prompts).Assembly);
                     resourceMan = temp;
                 }
                 return resourceMan;
@@ -61,24 +61,24 @@ namespace PptAlbumGenerator.Properties {
         }
         
         /// <summary>
-        ///   查找类似 Option Explicit
-        ///
-        ///Public Sub PAG_PostProcess(p As Presentation)
-        ///Dim eachSlide As Slide
-        ///Dim eachShape As Shape
-        ///For Each eachSlide In p.Slides
-        ///    For Each eachShape In eachSlide.Shapes
-        ///        Dim animation As Effect
-        ///        Set animation = eachSlide.TimeLine.MainSequence.FindFirstAnimationFor(eachShape)
-        ///        If Not animation Is Nothing Then
-        ///            If animation.EffectType = msoAnimEffectCustom Then
-        ///                Dim duration As Single
-        ///                Dim path As String
-        ///                d [字符串的其余部分被截断]&quot;; 的本地化字符串。
+        ///   查找类似 PowerPoint Album Generator
+        ///by CXuesong, 2015 的本地化字符串。
         /// </summary>
-        internal static string VBAModule {
+        internal static string HeaderText {
             get {
-                return ResourceManager.GetString("VBAModule", resourceCulture);
+                return ResourceManager.GetString("HeaderText", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   查找类似 Syntax
+        ///PptAlbumGenerator ScriptPath
+        ///
+        ///The folder containing specified script will be used as default WorkPath. (Though you can change WorkPath using Dir directive in your script.) 的本地化字符串。
+        /// </summary>
+        internal static string HelpText {
+            get {
+                return ResourceManager.GetString("HelpText", resourceCulture);
             }
         }
     }
