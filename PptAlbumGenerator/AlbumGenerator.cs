@@ -247,9 +247,11 @@ namespace PptAlbumGenerator
                 e.Exit = (options & AnimationOptions.Exit) == AnimationOptions.Exit
                     ? MsoTriState.msoTrue
                     : MsoTriState.msoFalse;
-                var ani = (options & AnimationOptions.AfterPrevious) == AnimationOptions.AfterPrevious
-                    ? new AnimationInfo(Animations.LastOrDefault()?.EndAt ?? TimeSpan.Zero, duration)
-                    : new AnimationInfo(Animations.LastOrDefault()?.StartAt ?? TimeSpan.Zero, duration);
+                var ani =
+                    new AnimationInfo(((options & AnimationOptions.AfterPrevious) == AnimationOptions.AfterPrevious
+                        ? Animations.LastOrDefault()?.EndAt
+                        : Animations.LastOrDefault()?.StartAt) ?? TimeSpan.Zero + delay,
+                        duration);
                 ani.ApplyTiming(e.Timing);
                 if ((options & AnimationOptions.ByCharacter) == AnimationOptions.ByCharacter)
                 {
