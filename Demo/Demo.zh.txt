@@ -1,0 +1,102 @@
+# PptGenerator 脚本样例
+# by CXuesong, 2015
+
+# 基本约定
+# 使用一个空白字符（例如空格或者制表符）分隔操作名称和操作的各个参数。
+# 操作名称不分大小写。
+# 如果某些参数使用默认值，则将对应位置留空。
+# 每行的左侧缩进（以空白字符的数量为准）确定了操作的作用域（closure），或者说层次。
+# 空行会被忽略。
+# 以 # 开头的行为注释行。
+# 关于所有可用的指令及其参数列表，请参阅 Closures.cs 中所有应用 [ClosureOperationAttribute] 的方法。
+
+# 如果显式将 Debug 设置为 True，则会显示图片的路径。
+Debug	True
+
+# 切换工作路径。工作路径是文件的默认起始路径。
+Dir	Images
+
+# 下面的代码演示了如何插入页面/文本/动画，
+# 先在此处介绍在下面使用到的操作。
+# 注意，被方括号括起来的参数是可选的。
+#
+# 插入页面。
+# Page [图片路径] [主文本]
+    # 可以显式指定图片的动画效果。
+    #   ImageAnimation 动画类型
+    #   其中，“动画类型”可以是
+    #       None        无动画。
+    #       Expand      缓慢放大。
+    #       Shrink      缓慢缩小。
+    #       ScrollFar   向右侧滚动；竖向图片向下滚动。
+    #       ScrollNear  向左侧滚动；竖向图片向上滚动。
+    # 在页面中可以插入文本。
+    # 文本默认是居中的。
+    # Text [文本内容]
+        # 可以在文本框中追加行。
+        #   Paragraph [文本内容]
+        
+        # 可以在竖直方向上定位文本。
+        #   Top [位移]
+        #   Bottom [位移]
+        #   VCenter [相对竖直中点的位移]
+        #   位移使用相对距离（0 - 1）。1 表示幻灯片的高度。
+        
+        # 可以给文本添加一个或多个动画。
+        #   Animation [动画类型] [选项] [延迟时间]
+        #   其中，动画类型需要使用 msoAnimEffect 中的枚举名称指定。
+        #   有关可以使用的所有枚举名称，请参阅
+        #       https://msdn.microsoft.com/en-us/library/office/microsoft.office.interop.powerpoint.msoanimeffect.aspx
+        #   选项包括
+        #     None              无选项。这是默认值。
+        #     Exit              使用对应的退出动画而不是进入动画。
+        #     ByParagraph       文本按段落应用动画。
+        #     ByCharacter       文本按字符应用动画。
+        #     WithPrevious      在前一动画开始时（而不是结束后）播放此动画。
+        # 延迟时间表示动画开始前等待的时间。单位为秒。
+
+Page		请等待……
+	Text	PAG 示例幻灯片
+		FontSize	36
+		VCenter
+		Animation	MsoAnimEffectFade
+	Text	by CXuesong, 2015
+		FontSize	28
+		VCenter	0.1
+		Animation	MsoAnimEffectFade
+
+# 小技巧：可以在命令提示符中使用 dir /b 以生成文件（照片文件）的列表。
+
+Page	A1.jpg	这里是一片宁静的麦田。
+	Subtitle2	西安 环山路附近
+Page	B1.jpg	可以使用 ImageAnimation 指令以显式指定图片的动画效果。
+	ImageAnimation	Expand
+	Subtitle2	华山
+Page	B2.jpg	当然，对于比较长的图片，会自动应用滚动效果。
+	Subtitle2	华山
+		Animation	MsoAnimEffectFade
+Page	A2.jpg	文本定位测试。|注意：主文本是可以换行的，请参阅脚本文件以了解详情。
+	Text	顶端文本。
+		Top
+		Animation	MsoAnimEffectFade
+	Text	居中文本。
+		VCenter
+		Animation	msoAnimEffectExpand
+		FontSize	28
+	Text	底端文本。
+		Paragraph	西安 环山路附近
+		Paragraph	注意：Text + Bottom 指令暂时不能和 Subtitle2 同时使用，|否则会造成排版错位。
+		FontSize	18
+# 注意 Bottom 应该在所有 Paragraph 指令的后面，
+# 以避免定位错误。
+		Bottom
+		Animation	MsoAnimEffectFade	ByParagraph
+Page	B3.jpg	华山
+Page	B4.jpg	华山
+Page	C.jpg	对于比较长的图片，也可以从容应对。
+	Subtitle2	东莞 观音山
+Page		最后，你可以在 PowerPoint 将生成的演示文稿|导出为 WMV 或 MP4 格式的视频。
+	Text	谢谢观赏
+		FontSize	36
+		VCenter
+		Animation	MsoAnimEffectFade
