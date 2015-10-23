@@ -161,6 +161,7 @@ namespace PptAlbumGenerator
     internal enum PrimaryImageAnimation
     {
         None = 0,
+        Fit,
         /// <summary>
         /// 视图从右向左，或从下向上。
         /// </summary>
@@ -227,7 +228,20 @@ namespace PptAlbumGenerator
                     ? PrimaryImage.Height/Document.SlideHeight
                     : PrimaryImage.Width/Document.SlideWidth; // > 1.0
                 if (scrollOffsetRelative < 1.2)
-                    ImageAnimation(PrimaryImageAnimation.None);
+                {
+                    switch (rnd.Next(0, 3))
+                    {
+                        case 0:
+                            ImageAnimation(PrimaryImageAnimation.Fit);
+                            break;
+                        case 1:
+                            ImageAnimation(PrimaryImageAnimation.Expand);
+                            break;
+                        default:
+                            ImageAnimation(PrimaryImageAnimation.Shrink);
+                            break;
+                    }
+                }
                 else if (isPrimaryImageVertical)
                     ImageAnimation(PrimaryImageAnimation.ScrollNear);
                 else
@@ -419,6 +433,10 @@ namespace PptAlbumGenerator
             {
                 case PrimaryImageAnimation.None:
                     AlignImage(false, true);
+                    SubstitutePrimaryImageAnimation(null);
+                    break;
+                case PrimaryImageAnimation.Fit:
+                    AlignImage(true, true);
                     SubstitutePrimaryImageAnimation(null);
                     break;
                 case PrimaryImageAnimation.Expand:

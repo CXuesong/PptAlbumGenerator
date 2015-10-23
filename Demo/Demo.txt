@@ -1,0 +1,103 @@
+# PptGenerator Sample Script
+# by CXuesong, 2015
+
+# Basic Contracts
+# Each line (not starting with #) represents an instruction.
+# Seperate operation name and its parameters with a single tab char.
+# Operation name is case-insensitive.
+# If you'd like to fill a parameter with its default value, please leave nothing between two tabs.
+# The left indension of each line (currently determined by the count of blank characters) decides the closure of current operation.
+# Empty or whitespaced line is ignored.
+# Comment lines begin with #. (Though they can have indension.)
+# As for a list of all available operations and their parameters, please refer to Closures.cs and look up all the methods with [ClosureOperationAttribute] .
+
+# Currently, if Debug is set to True, the path of the image will be shown on each slide.
+Debug	True
+
+# Switch work path, which determines the default path of image files.
+Dir	Images
+
+# The script below demonstrates how to insert slides/text/animation.
+# Above all, here is a introduction to some of the operations used in the script.
+# Note that parameters enclosed with square brackets are optional.
+#
+# Insert a page.
+#   Page [ImagePath] [PrimaryText]
+    # You can specify the fashion of image animation.
+    #   ImageAnimation AnimationType
+    #   where AnimationType can be
+    #       None        No animation.
+    #       Expand      Slowly expand the image.
+    #       Shrink      Slowly shrink the image.
+    #       ScrollFar   Scroll the image from left to right for landscape images, or from up to down for portrait images.
+    #       ScrollNear  Scroll the image from right to left for landscape images, or from down to up for portrait images.
+    # You can insert text box into the slide.
+    # Currently, all text box is horizontally centered.
+    # Text [Content]
+        # You can append a paragraph using following syntax
+        #   Paragraph [Content]
+        
+        # You can align text box vertically.
+        #   Top [Offset]
+        #   Bottom [Offset]
+        #   VCenter [OffsetFromCenter]
+        #   Offset is relative to presentation page size (0 - 1), and 1 represents page height。
+        
+        # You can add one or more animations to the text box.
+        #   Animation [Type] [Options] [Delay]
+        #   Where Type is the name of an msoAnimEffect enum member
+        #   As for a list of all available enum members, see
+        #       https://msdn.microsoft.com/en-us/library/office/microsoft.office.interop.powerpoint.msoanimeffect.aspx
+        #   Options can be
+        #     None              No options. This is the default value.
+        #     Exit              Using corresponding exit animation (e.g. fade out) instead of entrance animation (e.g. fade in).
+        #     ByParagraph       Apply animation by paragraph.
+        #     ByCharacter       Apply animation by character.
+        #     WithPrevious      Play animation at the beginning of previous animation, rather than the end of it.
+        #  Delay stands for the time, in seconds, before the playing of the animation.
+
+Page		Please wait...
+	Text	PAG Demo Presentation
+		FontSize	36
+		VCenter
+		Animation	MsoAnimEffectFade
+	Text	by CXuesong, 2015
+		FontSize	28
+		VCenter	0.1
+		Animation	MsoAnimEffectFade
+
+# Tip: you can use dir /b in command prompt to generate a list of files (or images, exactly).
+
+Page	A1.jpg	Here is a field of wheat in serenity.
+	Subtitle2	Vicinity of Huanshan Rd., Xi'an
+Page	B1.jpg	You can use ImageAnimation operation to specify image animation explicitly.
+	ImageAnimation	Expand
+	Subtitle2	Mt Hua in Shaanxi, western of the Five Sacred Mountains
+Page	B2.jpg	For images that are too long, |ImageAnimation will automatically be set to ScrollNear/ScrollFar.
+	Subtitle2	Mt Hua in Shaanxi
+		Animation	MsoAnimEffectFade
+Page	A2.jpg	Text alignment test|Note that primary text can have line breaks. Refer to the script file for more info.
+	Text	-- Top --
+		Top
+		Animation	MsoAnimEffectFade
+	Text	-- Centered --
+		VCenter
+		Animation	msoAnimEffectExpand
+		FontSize	28
+	Text	-- Bottom --
+		Paragraph	Vicinity of Huanshan Rd., Xi'an
+		Paragraph	Note: Text + Bottom operation currently cannot be used with Subtitle2, |or the positioning will be wierd.
+		FontSize	18
+# Note: Bottom operation should be after any Paragraph operation,
+# to avoid alignment problems.
+		Bottom
+		Animation	MsoAnimEffectFade	ByParagraph
+Page	B3.jpg	Mt Hua in Shaanxi
+Page	B4.jpg	Mt Hua in Shaanxi
+Page	C.jpg	This is a really long image.
+	Subtitle2	Mt Guanyin, Dongguan
+Page		Finally, you can export the presentation to WMV or MP4 video in PowerPoint.
+	Text	Thanks for Watching
+		FontSize	36
+		VCenter
+		Animation	MsoAnimEffectFade
